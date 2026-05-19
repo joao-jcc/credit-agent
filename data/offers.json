@@ -1,0 +1,25 @@
+{
+  "offers": [
+    {
+      "id": "offer_001",
+      "name": "Pagamento à Vista",
+      "discount_pct": 50,
+      "installments": 1,
+      "description": "Quite hoje com 50% de desconto — melhor oferta disponível"
+    },
+    {
+      "id": "offer_002",
+      "name": "Parcelamento em 6x",
+      "discount_pct": 30,
+      "installments": 6,
+      "description": "30% de desconto parcelado em 6 vezes sem juros"
+    },
+    {
+      "id": "offer_003",
+      "name": "Parcelamento em 12x",
+      "discount_pct": 15,
+      "installments": 12,
+      "description": "15% de desconto em até 12 parcelas mensais"
+    }
+  ]
+}
