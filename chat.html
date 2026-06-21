@@ -7,29 +7,22 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-gray-100 h-screen flex items-center justify-center">
 
 <div id="root" class="w-full h-full max-w-2xl mx-auto"></div>
 
-<script type="text/babel">
+<script>
 const API = "http://localhost:8000/api/chat";
+const e = React.createElement;
 
 function Message({ msg }) {
   const isUser = msg.role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
-      <div
-        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
-          isUser
-            ? "bg-blue-600 text-white rounded-br-sm"
-            : "bg-white text-gray-800 shadow-sm rounded-bl-sm"
-        }`}
-      >
-        {msg.text}
-      </div>
-    </div>
+  return e("div", { className: "flex " + (isUser ? "justify-end" : "justify-start") + " mb-3" },
+    e("div", {
+      className: "max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap " +
+        (isUser ? "bg-blue-600 text-white rounded-br-sm" : "bg-white text-gray-800 shadow-sm rounded-bl-sm")
+    }, msg.text)
   );
 }
 
@@ -43,18 +36,18 @@ function App() {
   const bottomRef = React.useRef(null);
 
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   async function startSession() {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/start`, { method: "POST" });
+      const res = await fetch(API + "/start", { method: "POST" });
       const data = await res.json();
       setSessionId(data.session_id);
       setMessages([{ role: "agent", text: data.message }]);
       setStarted(true);
-    } catch {
+    } catch (_) {
       setMessages([{ role: "agent", text: "Erro ao conectar com o servidor." }]);
     } finally {
       setLoading(false);
@@ -65,105 +58,83 @@ function App() {
     const text = input.trim();
     if (!text || loading || dealClosed) return;
 
-    setMessages((prev) => [...prev, { role: "user", text }]);
+    setMessages(function(prev) { return prev.concat([{ role: "user", text }]); });
     setInput("");
     setLoading(true);
 
     try {
-      const res = await fetch(`${API}/message`, {
+      const res = await fetch(API + "/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, message: text }),
       });
       const data = await res.json();
-      setMessages((prev) => [...prev, { role: "agent", text: data.message }]);
+      setMessages(function(prev) { return prev.concat([{ role: "agent", text: data.message }]); });
       if (data.deal_closed) setDealClosed(true);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", text: "Erro ao enviar mensagem." },
-      ]);
+    } catch (_) {
+      setMessages(function(prev) { return prev.concat([{ role: "agent", text: "Erro ao enviar mensagem." }]); });
     } finally {
       setLoading(false);
     }
   }
 
-  function handleKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  function handleKey(ev) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
       sendMessage();
     }
   }
 
-  return (
-    <div className="flex flex-col h-full bg-white shadow-xl">
-      {/* Header */}
-      <div className="bg-blue-700 text-white px-6 py-4 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold">
-          C
-        </div>
-        <div>
-          <p className="font-semibold text-sm">Central de Negociação</p>
-          <p className="text-xs text-blue-200">Assistente virtual</p>
-        </div>
-      </div>
+  const dots = e("div", { className: "flex justify-start mb-3" },
+    e("div", { className: "bg-white shadow-sm px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1" },
+      e("span", { className: "w-2 h-2 bg-gray-400 rounded-full animate-bounce", style: { animationDelay: "0ms" } }),
+      e("span", { className: "w-2 h-2 bg-gray-400 rounded-full animate-bounce", style: { animationDelay: "150ms" } }),
+      e("span", { className: "w-2 h-2 bg-gray-400 rounded-full animate-bounce", style: { animationDelay: "300ms" } })
+    )
+  );
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50">
-        {!started && !loading && (
-          <div className="flex items-center justify-center h-full">
-            <button
-              onClick={startSession}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-xl transition"
-            >
-              Iniciar conversa
-            </button>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <Message key={i} msg={msg} />
-        ))}
-
-        {loading && (
-          <div className="flex justify-start mb-3">
-            <div className="bg-white shadow-sm px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1">
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-            </div>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input */}
-      {started && (
-        <div className="border-t px-4 py-3 bg-white flex gap-2">
-          <input
-            className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-gray-50"
-            placeholder={dealClosed ? "Conversa encerrada" : "Digite sua mensagem..."}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            disabled={loading || dealClosed}
-            autoFocus
-          />
-          <button
-            onClick={sendMessage}
-            disabled={loading || dealClosed || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-4 py-2 rounded-xl text-sm font-medium transition"
-          >
-            Enviar
-          </button>
-        </div>
-      )}
-    </div>
+  return e("div", { className: "flex flex-col h-full bg-white shadow-xl" },
+    // Header
+    e("div", { className: "bg-blue-700 text-white px-6 py-4 flex items-center gap-3" },
+      e("div", { className: "w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold" }, "C"),
+      e("div", null,
+        e("p", { className: "font-semibold text-sm" }, "Central de Negociação"),
+        e("p", { className: "text-xs text-blue-200" }, "Assistente virtual")
+      )
+    ),
+    // Messages
+    e("div", { className: "flex-1 overflow-y-auto px-4 py-4 bg-gray-50" },
+      !started && !loading && e("div", { className: "flex items-center justify-center h-full" },
+        e("button", {
+          onClick: startSession,
+          className: "bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-xl transition"
+        }, "Iniciar conversa")
+      ),
+      messages.map(function(msg, i) { return e(Message, { key: i, msg: msg }); }),
+      loading && dots,
+      e("div", { ref: bottomRef })
+    ),
+    // Input
+    started && e("div", { className: "border-t px-4 py-3 bg-white flex gap-2" },
+      e("input", {
+        className: "flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-gray-50",
+        placeholder: dealClosed ? "Conversa encerrada" : "Digite sua mensagem...",
+        value: input,
+        onChange: function(ev) { setInput(ev.target.value); },
+        onKeyDown: handleKey,
+        disabled: loading || dealClosed,
+        autoFocus: true
+      }),
+      e("button", {
+        onClick: sendMessage,
+        disabled: loading || dealClosed || !input.trim(),
+        className: "bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-4 py-2 rounded-xl text-sm font-medium transition"
+      }, "Enviar")
+    )
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(e(App, null));
 </script>
 </body>
 </html>
