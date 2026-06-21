@@ -29,6 +29,8 @@ class AgentState(TypedDict):
     available_offers: list[dict]  # Ofertas carregadas do offers.json
     selected_offer: dict          # Oferta que o cliente aceitou
     negotiation_rounds: int       # Quantas rodadas de negociação já ocorreram
+    current_offer_index: int      # Índice da oferta em discussão (desacoplado das rodadas)
+    rounds_in_offer: int          # Quantas vezes o agente já defendeu a oferta atual
     debt_reason: str              # Motivo do endividamento extraído pela negociação
 
     # ── Resultado final ───────────────────────────────────────────────────────
@@ -54,6 +56,8 @@ def create_initial_state(session_id: str) -> AgentState:
         available_offers=[],
         selected_offer={},
         negotiation_rounds=0,
+        current_offer_index=0,
+        rounds_in_offer=0,
         debt_reason="",
         deal_closed=False,
         agreement_id="",

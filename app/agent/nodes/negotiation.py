@@ -26,19 +26,40 @@ def _format_brl(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _format_offer_block(debt_amount: float, offer: dict) -> str:
+    disc = debt_amount * (1 - offer["discount_pct"] / 100)
+    disc_fmt = _format_brl(disc)
+    inst_val = disc / offer["installments"]
+    inst_fmt = _format_brl(inst_val)
+
+    if offer["installments"] == 1:
+        detail = f"pagamento único de **{disc_fmt}**"
+    else:
+        detail = f"**{offer['installments']}x** de **{inst_fmt}** (total: {disc_fmt})"
+
+    return (
+        f"Posso oferecer uma condição melhor: **{offer['name']}** "
+        f"com {offer['discount_pct']}% de desconto — {detail}. O que acha?"
+    )
+
+
 async def negotiation_node(state: AgentState) -> dict:
     debt_amount = float(state["customer_data"]["debt_amount"])
     rounds = state["negotiation_rounds"]
     all_offers = state["available_offers"]
     known_debt_reason = state.get("debt_reason", "")
 
-    # Desbloqueia ofertas progressivamente: rodada 0 → 1ª oferta, rodada 1 → 2ª, etc.
-    unlocked_offers = all_offers[: rounds + 1]
+    # A oferta em discussão é controlada por current_offer_index (desacoplado das rodadas).
+    offer_index = state.get("current_offer_index", 0)
+    rounds_in_offer = state.get("rounds_in_offer", 0)
+
+    # Ofertas já reveladas ao cliente (o LLM só pode falar dessas)
+    revealed_offers = all_offers[: offer_index + 1]
 
     system = SystemMessage(content=NEGOTIATION_SYSTEM.format(
         agent_name=settings.agent_name,
         company_name=settings.company_name,
-        offers=json.dumps(unlocked_offers, ensure_ascii=False),
+        offers=json.dumps(revealed_offers, ensure_ascii=False),
         round=rounds + 1,
         debt_amount=debt_amount,
         debt_reason=known_debt_reason or "desconhecido",
@@ -59,28 +80,28 @@ async def negotiation_node(state: AgentState) -> dict:
 
     status = data.get("status", "countered")
     next_round = rounds + 1
-    has_more_offers = next_round < len(all_offers)
 
-    # Revela a próxima condição apenas quando o cliente continua negociando
-    if status == "countered" and has_more_offers:
-        next_offer = all_offers[next_round]
-        disc = debt_amount * (1 - next_offer["discount_pct"] / 100)
-        disc_fmt = _format_brl(disc)
-        inst_val = disc / next_offer["installments"]
-        inst_fmt = _format_brl(inst_val)
+    # Valores de controle de oferta (atualizados conforme defesa/avanço)
+    new_offer_index = offer_index
+    new_rounds_in_offer = rounds_in_offer
 
-        if next_offer["installments"] == 1:
-            detail = f"pagamento único de **{disc_fmt}**"
-        else:
-            detail = f"**{next_offer['installments']}x** de **{inst_fmt}** (total: {disc_fmt})"
+    reply_text = data["reply"]
 
-        reply_text = (
-            f"{data['reply']}\n\n"
-            f"Posso oferecer uma condição melhor: **{next_offer['name']}** "
-            f"com {next_offer['discount_pct']}% de desconto — {detail}. O que acha?"
+    # Cliente ainda não aceitou: primeiro defendemos a oferta atual; só avançamos
+    # para a próxima após defender ao menos `rounds_per_offer` vezes.
+    if status == "countered":
+        new_rounds_in_offer = rounds_in_offer + 1
+        has_more_offers = offer_index + 1 < len(all_offers)
+        should_advance = (
+            new_rounds_in_offer >= settings.rounds_per_offer and has_more_offers
         )
-    else:
-        reply_text = data["reply"]
+
+        if should_advance:
+            new_offer_index = offer_index + 1
+            new_rounds_in_offer = 0
+            next_offer = all_offers[new_offer_index]
+            reply_text = f"{data['reply']}\n\n{_format_offer_block(debt_amount, next_offer)}"
+        # Caso contrário, apenas defendemos: usamos o reply do LLM como está.
 
     reply = AIMessage(content=reply_text)
 
@@ -91,14 +112,16 @@ async def negotiation_node(state: AgentState) -> dict:
             (o for o in all_offers if o["id"] == data["accepted_offer_id"]),
             {}
         )
-    # Fallback: se o LLM marcou "accepted" sem ID válido, usa a última oferta desbloqueada
+    # Fallback: se o LLM marcou "accepted" sem ID válido, usa a oferta atual
     if status == "accepted" and not selected_offer:
-        selected_offer = unlocked_offers[-1]
+        selected_offer = all_offers[offer_index]
 
     result = {
         "messages": [reply],
         "selected_offer": selected_offer,
         "negotiation_rounds": next_round,
+        "current_offer_index": new_offer_index,
+        "rounds_in_offer": new_rounds_in_offer,
         "negotiation_status": status,
         "current_node": "negotiation",
     }

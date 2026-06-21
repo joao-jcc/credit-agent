@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/negotiation_db"
     offers_file_path: str = "data/offers.json"
     max_negotiation_rounds: int = 3
+    rounds_per_offer: int = 1  # nº de vezes que o agente defende a oferta antes de avançar
 
     # ── Identidade do agente (usada nos prompts) ──────────────────────────────
     agent_name: str = "Seven"
