@@ -97,11 +97,39 @@ Já existe `_rank_offers` por dívida/atraso. Possíveis refinos:
 
 ---
 
+## Melhoria 5 — Argumentação empática e contexto do cliente [PROMPTS]
+
+### Problema observado
+Quando o cliente revela uma dificuldade financeira (ex.: "perdi o emprego") ou fornece
+um dado pessoal (número de telefone), o LLM tende a classificar como `farewell` e
+encerrar a conversa prematuramente. Além disso, as respostas de defesa da oferta são
+pouco personalizadas e não usam o contexto que o próprio cliente acabou de compartilhar.
+
+### Objetivo
+- Tratar qualquer revelação de dificuldade como **abertura de empatia**, não como recusa.
+- Usar o `debt_reason` e o nome do cliente para personalizar cada argumento.
+- Manter a conversa viva enquanto houver ambiguidade; encerrar só em recusa **definitiva**.
+- Mensagens com tamanho adaptado ao momento (sem restrição rígida de parágrafos),
+  mas sem listas nem blocos longos.
+
+### Implementação (prompts)
+1. Adicionar à `NEGOTIATION_SYSTEM` a seção **"Regra de ouro — dificuldade financeira NÃO é encerramento"**:
+   reconhecer a situação + conectar ao benefício da oferta disponível.
+2. Instrução explícita para dados pessoais (telefone, e-mail): agradecer brevemente e continuar.
+3. Critério de `farewell` mais restrito: apenas recusa categórica e inequívoca.
+4. Flexibilizar tamanho de resposta no `COMPOSER_SYSTEM`: "1–3 frases no usual" em vez de máximo rígido.
+
+### Status
+✅ Implementado nos prompts (junho/2026).
+
+---
+
 ## Priorização sugerida
 
 | Prioridade | Melhoria | Esforço | Impacto |
 |---|---|---|---|
 | 1 | Sondagem (probing) local | Médio | Alto |
-| 2 | Limite de tentativas de auth | Baixo | Médio |
-| 3 | Robustez no close_deal | Baixo | Médio |
-| 4 | Ranking por perfil (refino) | Baixo | Baixo |
+| 2 | Argumentação empática (prompts) | Baixo | Alto |
+| 3 | Limite de tentativas de auth | Baixo | Médio |
+| 4 | Robustez no close_deal | Baixo | Médio |
+| 5 | Ranking por perfil (refino) | Baixo | Baixo |
