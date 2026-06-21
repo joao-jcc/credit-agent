@@ -5,7 +5,9 @@ Nó central do loop de negociação.
 
 O LLM interpreta a resposta do cliente e decide:
 1. Cliente aceitou uma oferta → status "accepted" + selected_offer preenchido
-2. Cliente não aceitou e há mais condições → status "countered" (revela a próxima)
+2. Cliente ainda não aceitou → status "countered"; o nó defende a oferta atual.
+   Somente após `rounds_per_offer` defesas sem aceitação o índice avança para a próxima.
+   A revelação da nova oferta ocorre na rodada seguinte (nunca na mesma mensagem de defesa).
 3. Cliente recusou categoricamente → status "farewell" (encerra sem acordo)
 
 O prompt de sistema vive em app/agent/prompts.py (NEGOTIATION_SYSTEM).
@@ -25,22 +27,6 @@ llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 def _format_brl(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-
-def _format_offer_block(debt_amount: float, offer: dict) -> str:
-    disc = debt_amount * (1 - offer["discount_pct"] / 100)
-    disc_fmt = _format_brl(disc)
-    inst_val = disc / offer["installments"]
-    inst_fmt = _format_brl(inst_val)
-
-    if offer["installments"] == 1:
-        detail = f"pagamento único de **{disc_fmt}**"
-    else:
-        detail = f"**{offer['installments']}x** de **{inst_fmt}** (total: {disc_fmt})"
-
-    return (
-        f"Posso oferecer uma condição melhor: **{offer['name']}** "
-        f"com {offer['discount_pct']}% de desconto — {detail}. O que acha?"
-    )
 
 
 async def negotiation_node(state: AgentState) -> dict:
@@ -89,6 +75,10 @@ async def negotiation_node(state: AgentState) -> dict:
 
     # Cliente ainda não aceitou: primeiro defendemos a oferta atual; só avançamos
     # para a próxima após defender ao menos `rounds_per_offer` vezes.
+    # Quando o limite de defesas é atingido, apenas desbloqueamos a próxima oferta
+    # para a rodada seguinte — a mensagem atual continua sendo só a defesa.
+    # Na próxima invocação, o LLM verá a nova oferta em "revealed_offers" e a
+    # apresentará de forma natural, sem misturar defesa e revelação numa mesma mensagem.
     if status == "countered":
         new_rounds_in_offer = rounds_in_offer + 1
         has_more_offers = offer_index + 1 < len(all_offers)
@@ -99,9 +89,8 @@ async def negotiation_node(state: AgentState) -> dict:
         if should_advance:
             new_offer_index = offer_index + 1
             new_rounds_in_offer = 0
-            next_offer = all_offers[new_offer_index]
-            reply_text = f"{data['reply']}\n\n{_format_offer_block(debt_amount, next_offer)}"
-        # Caso contrário, apenas defendemos: usamos o reply do LLM como está.
+            # reply_text permanece como está (só defesa); a próxima oferta
+            # será revelada pelo LLM na rodada seguinte.
 
     reply = AIMessage(content=reply_text)
 
