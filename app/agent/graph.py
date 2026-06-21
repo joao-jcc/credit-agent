@@ -45,14 +45,14 @@ def route_after_negotiation(state: AgentState) -> str:
     """
     Após cada rodada de negociação:
     - Aceitou oferta → fecha o acordo
-    - LLM retornou "rejected" explicitamente → encerra sem acordo
+    - LLM sinalizou "rejected"/"farewell" → encerra sem acordo
     - Atingiu o limite de rodadas → encerra sem acordo
     - Caso contrário → continua negociando
     """
     if state["selected_offer"]:
         return "close_deal"
 
-    if state.get("negotiation_status") == "rejected":
+    if state.get("negotiation_status") in ("rejected", "farewell"):
         return "farewell"
 
     if state["negotiation_rounds"] >= settings.max_negotiation_rounds:

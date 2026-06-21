@@ -4,64 +4,47 @@ app/agent/nodes/negotiation.py
 Nó central do loop de negociação.
 
 O LLM interpreta a resposta do cliente e decide:
-1. Cliente aceitou uma oferta → retorna selected_offer preenchido
-2. Cliente fez contraproposta → tenta adaptar e contra-ofertar
-3. Cliente recusou tudo → incrementa rodada, o roteador decidirá encerrar se necessário
+1. Cliente aceitou uma oferta → status "accepted" + selected_offer preenchido
+2. Cliente não aceitou e há mais condições → status "countered" (revela a próxima)
+3. Cliente recusou categoricamente → status "farewell" (encerra sem acordo)
+
+O prompt de sistema vive em app/agent/prompts.py (NEGOTIATION_SYSTEM).
 """
 
 import json
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from app.agent.state import AgentState
+from app.agent.prompts import NEGOTIATION_SYSTEM
+from app.settings import settings
 
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
-NEGOTIATION_SYSTEM = """
-Você é um negociador de dívidas simpático e empático da empresa FinanceX.
-Seu objetivo é fechar um acordo que o cliente consiga pagar.
 
-Regras:
-- Seja cordial e compreensivo, nunca pressione agressivamente
-- Tente entender a situação financeira do cliente
-- Você SOMENTE pode oferecer as opções listadas em "Ofertas desbloqueadas" — não invente parcelas ou descontos diferentes
-- Se o cliente não aceitar a oferta atual e ainda houver ofertas não reveladas, use status "countered" — a próxima oferta será apresentada automaticamente na próxima rodada
-- Se o cliente aceitar qualquer oferta, marque status como "accepted" e informe o id correto
-- Se o cliente rejeitar todas as ofertas disponíveis e não houver mais, use status "rejected"
-- Retorne SEMPRE um JSON com os campos abaixo
-
-Formato de resposta obrigatório (JSON puro, sem markdown):
-{{
-  "reply": "sua mensagem para o cliente (sem mencionar a próxima oferta — ela aparecerá automaticamente)",
-  "accepted_offer_id": "id da oferta aceita ou null",
-  "status": "accepted | countered | rejected"
-}}
-
-Ofertas desbloqueadas até agora: {offers}
-Total de ofertas disponíveis: {total_offers}
-Rodada atual: {round}
-Valor original da dívida: R$ {debt_amount}
-"""
+def _format_brl(value: float) -> str:
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 async def negotiation_node(state: AgentState) -> dict:
     debt_amount = float(state["customer_data"]["debt_amount"])
     rounds = state["negotiation_rounds"]
     all_offers = state["available_offers"]
+    known_debt_reason = state.get("debt_reason", "")
 
     # Desbloqueia ofertas progressivamente: rodada 0 → 1ª oferta, rodada 1 → 2ª, etc.
     unlocked_offers = all_offers[: rounds + 1]
 
     system = SystemMessage(content=NEGOTIATION_SYSTEM.format(
+        agent_name=settings.agent_name,
+        company_name=settings.company_name,
         offers=json.dumps(unlocked_offers, ensure_ascii=False),
-        total_offers=len(all_offers),
         round=rounds + 1,
         debt_amount=debt_amount,
+        debt_reason=known_debt_reason or "desconhecido",
     ))
 
-    # Inclui histórico recente para o LLM ter contexto
-    recent_messages = state["messages"][-6:]
-
+    recent_messages = state["messages"][-settings.history_window:]
     response = await llm.ainvoke([system] + recent_messages)
 
     try:
@@ -71,18 +54,20 @@ async def negotiation_node(state: AgentState) -> dict:
             "reply": response.content,
             "accepted_offer_id": None,
             "status": "countered",
+            "debt_reason": "",
         }
 
-    # Se o cliente não aceitou e ainda há ofertas para revelar, apresenta a próxima
+    status = data.get("status", "countered")
     next_round = rounds + 1
     has_more_offers = next_round < len(all_offers)
 
-    if data.get("status") in ("countered", "rejected") and has_more_offers:
+    # Revela a próxima condição apenas quando o cliente continua negociando
+    if status == "countered" and has_more_offers:
         next_offer = all_offers[next_round]
         disc = debt_amount * (1 - next_offer["discount_pct"] / 100)
-        disc_fmt = f"R$ {disc:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        disc_fmt = _format_brl(disc)
         inst_val = disc / next_offer["installments"]
-        inst_fmt = f"R$ {inst_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        inst_fmt = _format_brl(inst_val)
 
         if next_offer["installments"] == 1:
             detail = f"pagamento único de **{disc_fmt}**"
@@ -107,13 +92,20 @@ async def negotiation_node(state: AgentState) -> dict:
             {}
         )
     # Fallback: se o LLM marcou "accepted" sem ID válido, usa a última oferta desbloqueada
-    if data.get("status") == "accepted" and not selected_offer:
+    if status == "accepted" and not selected_offer:
         selected_offer = unlocked_offers[-1]
 
-    return {
+    result = {
         "messages": [reply],
         "selected_offer": selected_offer,
         "negotiation_rounds": next_round,
-        "negotiation_status": data.get("status", "countered"),
+        "negotiation_status": status,
         "current_node": "negotiation",
     }
+
+    # Persiste o motivo do endividamento quando o LLM o identificar
+    new_debt_reason = (data.get("debt_reason") or "").strip()
+    if new_debt_reason:
+        result["debt_reason"] = new_debt_reason
+
+    return result
