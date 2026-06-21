@@ -35,6 +35,7 @@ Cada etapa é um **nó** no grafo do LangGraph. As transições são controladas
 credit-negotiation-agent/
 ├── app/
 │   ├── main.py                   # Entry point FastAPI
+│   ├── settings.py               # Configurações via pydantic-settings (lê .env)
 │   ├── api/
 │   │   └── chat.py               # Endpoints REST da conversa
 │   ├── agent/
@@ -51,24 +52,18 @@ credit-negotiation-agent/
 │   │   └── tools/
 │   │       ├── db_tools.py       # Funções de acesso ao PostgreSQL
 │   │       └── offer_tools.py    # Funções de leitura do arquivo de ofertas
-│   ├── db/
-│   │   ├── connection.py         # Configuração do SQLAlchemy async
-│   │   └── models.py             # Modelos ORM (Customer, Agreement)
-│   ├── models/                   # Modelos Pydantic de domínio
-│   │   └── domain.py
-│   └── schemas/                  # Schemas de request/response da API
-│       └── chat.py
+│   └── db/
+│       ├── connection.py         # Configuração do SQLAlchemy async
+│       └── models.py             # Modelos ORM (Customer, Agreement)
 ├── data/
 │   ├── offers.json               # Ofertas de renegociação (mock)
 │   └── seed.sql                  # Dados fake para o PostgreSQL
 ├── scripts/
 │   └── init_db.py                # Script para criar tabelas e popular o banco
-├── tests/
-│   └── test_agent.py             # Testes básicos do fluxo
 ├── .env.example                  # Variáveis de ambiente necessárias
 ├── docker-compose.yml            # PostgreSQL + app
 ├── Dockerfile
-└── requirements.txt
+└── pyproject.toml                # Dependências gerenciadas pelo uv
 ```
 
 ---
@@ -120,9 +115,12 @@ class AgentState(TypedDict):
     available_offers: list[dict]      # Ofertas carregadas do JSON
     selected_offer: dict              # Oferta escolhida/aceita
     negotiation_rounds: int           # Contador de rodadas de negociação
+    negotiation_status: str           # "accepted" | "rejected" | "countered" | ""
     deal_closed: bool                 # Flag de acordo fechado
     agreement_id: str                 # ID do acordo salvo no banco
+    session_id: str                   # UUID da sessão (vem da API)
     current_node: str                 # Nó atual (para debug)
+    error_message: str                # Mensagem de erro caso algo dê errado
 ```
 
 ---
@@ -238,14 +236,14 @@ cp .env.example .env
 # 3. Suba o PostgreSQL
 docker-compose up -d postgres
 
-# 4. Instale dependências
-pip install -r requirements.txt
+# 4. Instale dependências com uv (cria o .venv automaticamente)
+uv sync
 
 # 5. Inicialize o banco com dados fake
-python scripts/init_db.py
+uv run python scripts/init_db.py
 
 # 6. Rode a API
-uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 
 # 7. Teste
 curl -X POST http://localhost:8000/api/chat/start
@@ -267,7 +265,5 @@ MAX_NEGOTIATION_ROUNDS=3
 ## Próximos Passos (produção)
 
 - [ ] Substituir busca de ofertas por chamada a API externa
-- [ ] Adicionar autenticação JWT nos endpoints
 - [ ] Persistir sessões no Redis (não em memória)
-- [ ] Adicionar observabilidade com LangSmith
 - [ ] Webhooks para notificar CRM ao fechar acordo

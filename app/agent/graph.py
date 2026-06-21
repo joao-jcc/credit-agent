@@ -14,6 +14,7 @@ Conceitos-chave:
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from app.agent.state import AgentState
+from app.settings import settings
 from app.agent.nodes.greeting import greeting_node
 from app.agent.nodes.authentication import authentication_node
 from app.agent.nodes.fetch_customer import fetch_customer_node
@@ -45,12 +46,16 @@ def route_after_negotiation(state: AgentState) -> str:
     Após cada rodada de negociação:
     - Aceitou oferta → fecha o acordo
     - LLM retornou "rejected" explicitamente → encerra sem acordo
+    - Atingiu o limite de rodadas → encerra sem acordo
     - Caso contrário → continua negociando
     """
     if state["selected_offer"]:
         return "close_deal"
 
     if state.get("negotiation_status") == "rejected":
+        return "farewell"
+
+    if state["negotiation_rounds"] >= settings.max_negotiation_rounds:
         return "farewell"
 
     return "negotiation"

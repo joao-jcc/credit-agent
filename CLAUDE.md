@@ -127,7 +127,7 @@ Recebe mensagem do usuário, injeta no estado como `HumanMessage`, reinvoca o gr
 ### `GET /api/chat/{session_id}/status`
 Devolve snapshot do estado da sessão.
 
-**Armazenamento de sessão:** dict em memória (`_sessions`). Em produção: Redis.
+**Armazenamento de sessão:** `_session_ids: set[str]` rastreia sessões válidas; o estado fica no `MemorySaver` do LangGraph (indexado por `thread_id`). Em produção: substituir por `RedisSaver`.
 
 ---
 
@@ -211,7 +211,6 @@ curl -X POST http://localhost:8000/api/chat/start
 ## Próximos passos conhecidos
 
 - [ ] Substituir armazenamento de sessão em memória por Redis
-- [ ] Adicionar autenticação JWT nos endpoints
-- [ ] Substituir `offer_tools.py` por chamada a API externa
-- [ ] Integrar LangSmith para observabilidade do grafo
+- [ ] Substituir `offer_tools.py` por chamada a API externa com filtro/ranking por perfil do cliente
+- [ ] Validação completa de dígito verificador do CPF em `authentication.py`
 - [ ] Adicionar testes de integração do fluxo completo

@@ -30,7 +30,8 @@ def _format_offer(debt_amount: float, offer: dict, index: int) -> str:
 
 async def fetch_offers_node(state: AgentState) -> dict:
     debt_amount = float(state["customer_data"]["debt_amount"])
-    offers = await load_offers_for_debt(debt_amount)
+    overdue_days = int(state["customer_data"].get("overdue_days", 0))
+    offers = await load_offers_for_debt(debt_amount, overdue_days)
 
     # Apresenta apenas a primeira oferta (mais vantajosa) para começar a negociação
     first_offer = _format_offer(debt_amount, offers[0], 1)

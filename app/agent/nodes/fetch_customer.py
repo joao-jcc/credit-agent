@@ -13,12 +13,7 @@ async def fetch_customer_node(state: AgentState) -> dict:
     customer = await get_customer_by_cpf(state["cpf"])
 
     if not customer:
-        reply = AIMessage(content=(
-            "Hmm, não encontrei nenhuma dívida associada ao seu CPF em nossa base. "
-            "Por favor, entre em contato com nossa central para mais informações."
-        ))
         return {
-            "messages": [reply],
             "customer_data": {},
             "current_node": "fetch_customer",
         }

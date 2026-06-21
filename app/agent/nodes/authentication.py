@@ -36,9 +36,22 @@ Mensagem do usuário: {user_message}
 
 
 def validate_cpf_format(cpf: str) -> bool:
-    """Validação básica: 11 dígitos numéricos. Adicione validação real se necessário."""
+    """
+    Valida o CPF usando o algoritmo oficial de dígitos verificadores.
+    Rejeita sequências trivialmente inválidas (ex.: 000.000.000-00, 111.111.111-11).
+    """
     digits = re.sub(r"\D", "", cpf or "")
-    return len(digits) == 11
+    if len(digits) != 11:
+        return False
+    if len(set(digits)) == 1:
+        return False
+
+    def _check(d: str, length: int) -> bool:
+        total = sum(int(d[i]) * (length + 1 - i) for i in range(length))
+        remainder = (total * 10) % 11
+        return remainder == int(d[length])
+
+    return _check(digits, 9) and _check(digits, 10)
 
 
 async def authentication_node(state: AgentState) -> dict:
@@ -97,8 +110,11 @@ async def authentication_node(state: AgentState) -> dict:
             "Para continuar, preciso do seu **nome completo**. "
             "Pode me informar?"
         ))
-        return {
+        result: dict = {
             "messages": [reply],
             "authenticated": False,
             "current_node": "authentication",
         }
+        if has_valid_cpf:
+            result["cpf"] = re.sub(r"\D", "", extracted_cpf)
+        return result
