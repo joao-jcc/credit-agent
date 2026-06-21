@@ -47,22 +47,13 @@ def _first_name(full_name: str) -> str:
 
 
 def validate_cpf_format(cpf: str) -> bool:
-    """
-    Valida o CPF usando o algoritmo oficial de dígitos verificadores.
-    Rejeita sequências trivialmente inválidas (ex.: 000.000.000-00, 111.111.111-11).
-    """
+    """Valida que o CPF tem 11 dígitos numéricos e não é sequência repetida."""
     digits = re.sub(r"\D", "", cpf or "")
     if len(digits) != 11:
         return False
     if len(set(digits)) == 1:
         return False
-
-    def _check(d: str, length: int) -> bool:
-        total = sum(int(d[i]) * (length + 1 - i) for i in range(length))
-        remainder = (total * 10) % 11
-        return remainder == int(d[length])
-
-    return _check(digits, 9) and _check(digits, 10)
+    return True
 
 
 async def authentication_node(state: AgentState) -> dict:
